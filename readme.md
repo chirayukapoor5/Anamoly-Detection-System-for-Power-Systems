@@ -201,3 +201,52 @@ docker-compose logs app
 - **Fast and Scalable:** Linear time complexity makes it efficient for real-time processing.
 - **Robustness to Anomalies:** Detects anomalies effectively by isolating them rather than profiling normal data points.
 - **Minimal Parameter Tuning:** Simple setup makes it ideal for real-time systems where quick deployment is essential.
+
+---
+
+## Reproducible synthetic anomaly validation (November 2026)
+
+**Scope limitation:** This project operates on **simulated power-plant operational telemetry**, not a labeled dataset of verified electrical faults. The repository does not yet contain three-phase voltage/current, transformer winding temperature, THD, or laboratory-confirmed fault categories. The following metrics describe detection of **injected synthetic perturbations** and must not be presented as measured grid-fault classification performance.
+
+### Measurements and model features
+
+Shared generated measurements: `power_output` (MW), `demand` (MW), `grid_frequency` (Hz). The Isolation Forest model currently consumes power output and demand plus two plant-specific fields, **not grid frequency**.
+
+| Plant | Additional model inputs |
+| --- | --- |
+| Gas | `fuel_consumption` (kg/hour), `emissions` (kg/hour) |
+| Wind | `wind_speed` (m/s), `turbine_efficiency` (%) |
+| Solar | `solar_radiation` (W/m²), `panel_temperature` (°C) |
+| Hydroelectric | `water_flow_rate` (m³/s), `turbine_rotation_speed` (RPM) |
+
+The producer now includes `is_anomaly` (0/1) in each generated record. It marks the **injected perturbation**, and it is **excluded from the model's input features**. Injection probability is 10%; Isolation Forest contamination is configured to 5% (this is *not* the false-positive rate).
+
+### Repeat the offline holdout evaluation
+
+Install the dependencies from `requirements.txt` (including scikit-learn), then run from the project root:
+
+```bash
+python validation/validate.py --samples 4000 --seed 42 --output validation/metrics.json
+```
+
+This uses deterministic Python random sampling, a **chronological 70/30 train/test split for each plant**, and the same plant-specific input sets and Isolation Forest contamination as the dashboard. The detector fits once on the most recent **up to 500 training records per plant**; all test records are scored without refitting. No label is used for training. Results include TP, FP, TN, FN, accuracy, precision, recall, F1 and false-positive rate, where `FPR = FP / (FP + TN)`.
+
+**Baseline from a local independent replay of the generator and detector logic** (`--samples 4000 --seed 42`, scikit-learn 1.8.0; 1,202 test records):
+
+| Metric | Synthetic holdout result |
+| --- | ---: |
+| Accuracy | **85.94%** |
+| Precision (injected anomalies) | **40.47%** |
+| Recall (injected anomalies) | **67.97%** |
+| F1 | **50.73%** |
+| False-positive rate | **11.92%** |
+| Confusion matrix | TP=87, FP=128, TN=946, FN=41 |
+
+The replay followed the committed generator's random draw order and model settings; **the committed validation entrypoint has not yet been independently executed in CI**. Run the command above in your environment for an authoritative file-based report. Counts may vary with library versions. The chronologically held-out data exposes substantial false positives, especially for hydroelectric observations under demand drift. The model is a baseline, **not production-validated fault monitoring**.
+
+### Remaining validation work
+
+- Test actual grid sensor recordings or a clearly documented simulation benchmark with engineering fault labels and safety-relevant detection criteria.
+- Add frequency deviation, phase voltage/current imbalance, transformer thermal measurements and harmonics only when supported by real input data.
+- Evaluate rolling retraining and concept-drift adaptation with a streaming/prequential protocol, plus alert latency, calibration and per-plant FPR targets.
+- Verify Kafka/Spark end-to-end integration and physical equipment behavior separately from offline statistical tests.
