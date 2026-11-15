@@ -65,6 +65,7 @@ def start_spark_streaming():
         StructField("power_output", DoubleType()),
         StructField("demand", DoubleType()),
         StructField("grid_frequency", DoubleType()),
+        StructField("is_anomaly", DoubleType()),
         StructField("fuel_consumption", DoubleType()),
         StructField("emissions", DoubleType()),
         StructField("wind_speed", DoubleType()),
