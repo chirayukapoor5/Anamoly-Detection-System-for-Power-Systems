@@ -3,7 +3,6 @@ import time
 import random
 import math
 from datetime import datetime, timezone
-from confluent_kafka import Producer
 import json
 import logging
 
@@ -36,6 +35,7 @@ def create_producer():
         'linger.ms': 5,
         'batch.num.messages': 1000
     }
+    from confluent_kafka import Producer
     return Producer(conf)
 
 # List of power plant types and regions
@@ -43,7 +43,7 @@ power_plant_types = ['Gas Plant', 'Wind Farm', 'Solar Farm', 'Hydroelectric Plan
 regions = ['North', 'South', 'East', 'West']
 
 # Initialize the producer
-producer = create_producer()
+producer = None
 
 def generate_data(counter):
     """
@@ -109,8 +109,10 @@ def generate_data(counter):
             'turbine_rotation_speed': random.uniform(100, 500),  # in RPM
         })
 
-    # Inject anomalies with a 10% chance
-    if random.random() < 0.1:
+    # Preserve ground truth for reproducible synthetic validation.
+    # This label indicates an injected perturbation, NOT a verified physical fault.
+    data['is_anomaly'] = int(random.random() < 0.1)
+    if data['is_anomaly']:
         if plant_type == 'Gas Plant':
             data['fuel_consumption'] *= random.uniform(1.5, 2.0)
             data['emissions'] *= random.uniform(1.2, 1.5)
